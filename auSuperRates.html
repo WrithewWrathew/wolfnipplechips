@@ -2,171 +2,72 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>AusSuper International Shares (Auto CSV)</title>
+<title>AusSuper CSV Debug</title>
 <style>
-  body { 
-    font-family: Arial, sans-serif; 
-    padding: 40px; 
-    max-width: 600px; 
-    margin: auto; 
-    background: #f5f5f5; 
-    text-align: center; 
-  }
-  #output { 
-    font-size: 3.5em; 
-    margin: 30px 0; 
-    padding: 40px; 
-    background: white; 
-    border-radius: 20px; 
-    box-shadow: 0 6px 30px rgba(0,0,0,0.15); 
-    font-weight: bold;
-  }
-  button { 
-    padding: 15px 35px; 
-    font-size: 1.3em; 
-    background: #0078d4; 
-    color: white; 
-    border: none; 
+  body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: auto; background: #f5f5f5; }
+  #csvContent { 
+    background: #000; 
+    color: #0f0; 
+    font-family: monospace; 
+    padding: 20px; 
     border-radius: 10px; 
-    cursor: pointer; 
-    margin: 10px; 
-  }
-  button:hover { background: #106ebe; }
-  button:disabled { background: #ccc; }
-  .status { font-size: 1.2em; color: #666; margin: 15px 0; }
-  #debug { 
-    font-size: 0.9em; 
-    color: #333; 
-    background: #f8f8f8; 
-    padding: 15px; 
-    border-radius: 8px; 
-    margin: 10px 0;
-    max-height: 150px;
-    overflow-y: auto;
-    font-family: monospace;
+    margin: 20px 0; 
+    max-height: 400px; 
+    overflow-y: auto; 
+    white-space: pre-wrap;
     text-align: left;
   }
+  button { padding: 15px 30px; font-size: 1.2em; background: #0078d4; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 10px; }
+  .status { font-size: 1.2em; color: #666; margin: 15px 0; }
 </style>
 </head>
 <body>
 
-<h1>🤑 AusSuper International Shares</h1>
-<div class="status" id="status">Streaming CSV via working proxies...</div>
-<div id="output">⏳</div>
-<div id="debug"></div>
-<button id="refreshBtn" disabled>🔄 Force Refresh</button>
+<h1>🤑 AusSuper CSV Debug - Full Content</h1>
+<div class="status" id="status">Fetching CSV...</div>
+<div id="csvContent">Loading...</div>
+<button id="refreshBtn">🔄 Refresh CSV</button>
 
 <script>
 const CSV_URL = 'https://www.australiansuper.com//api/graphs/dailyrates/download/?start=01/02/2026&end=08/02/2026&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=temp.csv';
 
-const WORKING_PROXIES = [
-  'https://corsproxy.io/?' + encodeURIComponent(CSV_URL),
-  'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(CSV_URL)
+const PROXIES = [
+  'https://corsproxy.io/?',
+  'https://api.codetabs.com/v1/proxy?quest='
 ];
 
-let currentAttempt = 0;
-
-async function tryProxy(proxyUrl) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout
-  
-  try {
-    const response = await fetch(proxyUrl, { 
-      signal: controller.signal,
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    });
-    clearTimeout(timeout);
-    
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.text();
-  } catch (e) {
-    clearTimeout(timeout);
-    throw e;
-  }
-}
-
-function parseCsv(csvText) {
-  const rows = csvText.replace(/\r\n?/g, '\n').trim().split('\n');
-  if (rows.length < 2) throw new Error('No data rows');
-  
-  const headers = rows[0].split(',').map(h => h.trim());
-  const intlIndex = headers.indexOf('International Shares');
-  if (intlIndex === -1) throw new Error('No International Shares column');
-  
-  // Find LAST row with real data
-  for (let i = rows.length - 1; i > 0; i--) {
-    const cols = rows[i].split(',').map(c => c.trim());
-    if (cols.length <= intlIndex) continue;
-    
-    const intlValue = parseFloat(cols[intlIndex]);
-    const hasRealData = cols.slice(1).some(c => {
-      const num = parseFloat(c);
-      return !isNaN(num) && Math.abs(num) > 0.0001;
-    });
-    
-    if (hasRealData) {
-      return intlValue;
-    }
-  }
-  return 0;
-}
-
-async function fetchData() {
+async function fetchCsv() {
   const status = document.getElementById('status');
-  const output = document.getElementById('output');
-  const debug = document.getElementById('debug');
-  const refreshBtn = document.getElementById('refreshBtn');
+  const csvContent = document.getElementById('csvContent');
   
-  refreshBtn.disabled = true;
-  status.textContent = `⏳ Proxy ${currentAttempt + 1}/2 (wait up to 45s)...`;
-  output.textContent = '⏳';
-  debug.innerHTML = `Trying: ${WORKING_PROXIES[currentAttempt]}<br>`;
+  status.textContent = 'Trying Proxy 1/2...';
   
-  try {
-    const csvText = await tryProxy(WORKING_PROXIES[currentAttempt]);
-    debug.innerHTML += `✅ CSV fetched (${csvText.length} chars)<br>`;
-    
-    const intlValue = parseCsv(csvText);
-    debug.innerHTML += `✅ International Shares: ${intlValue}<br>`;
-    
-    if (Math.abs(intlValue) < 0.0001) {
-      output.textContent = 'Currently no change.';
-      output.style.color = '#666';
-      status.textContent = '✅ No recent movement';
-    } else {
-      const pct = intlValue.toFixed(4);
-      output.textContent = `${pct}%`;
-      output.style.color = intlValue >= 0 ? '#00aa44' : '#cc0000';
-      status.textContent = `✅ ${intlValue >= 0 ? '↑' : '↓'}${Math.abs(intlValue).toFixed(4)}%`;
-    }
-    
-    refreshBtn.disabled = false;
-    currentAttempt = 0; // Reset for next manual refresh
-    
-  } catch (error) {
-    debug.innerHTML += `❌ ${error.message}<br>`;
-    
-    currentAttempt++;
-    if (currentAttempt < WORKING_PROXIES.length) {
-      setTimeout(() => fetchData(), 1000); // Try next proxy
-    } else {
-      status.textContent = '❌ Both proxies failed - retrying in 2 min...';
-      output.textContent = 'Retry...';
-      output.style.color = '#cc0000';
-      refreshBtn.disabled = false;
-      currentAttempt = 0;
+  for (let i = 0; i < PROXIES.length; i++) {
+    try {
+      const proxyUrl = PROXIES[i] + encodeURIComponent(CSV_URL);
+      status.textContent = `Proxy ${i+1}: ${PROXIES[i].substring(0, 20)}...`;
       
-      // Auto-retry every 2 minutes
-      setTimeout(fetchData, 120000);
+      const response = await fetch(proxyUrl, { 
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      
+      const csvText = await response.text();
+      csvContent.textContent = csvText;
+      
+      status.textContent = `✅ Proxy ${i+1} SUCCESS (${csvText.length} chars)`;
+      return;
+      
+    } catch (e) {
+      status.textContent = `❌ Proxy ${i+1} failed`;
     }
   }
+  
+  csvContent.textContent = 'ALL PROXIES FAILED';
+  status.textContent = '❌ No CSV data received';
 }
 
-// Auto-start immediately + every 5 minutes
-fetchData();
-setInterval(fetchData, 5 * 60 * 1000);
-
-document.getElementById('refreshBtn').addEventListener('click', fetchData);
+fetchCsv();
+document.getElementById('refreshBtn').addEventListener('click', fetchCsv);
 </script>
 
 </body>
