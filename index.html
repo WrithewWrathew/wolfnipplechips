@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head><title>🤑 AusSuper LIVE</title>
+<style>body{font-family:Arial;text-align:center;padding:50px;background:#f0f8ff;}
+#value{font-size:4em;font-weight:bold;padding:30px;background:white;border-radius:20px;display:inline-block;box-shadow:0 10px 30px rgba(0,0,0,0.2);}
+.positive{color:#00aa44;}.negative{color:#cc0000;}.zero{color:#666;}</style>
+</head>
+<body>
+<h1>🤑 AusSuper International Shares</h1>
+<div id="value">-</div>
+<div id="status">Loading...</div>
+<script>
+async function update(){ 
+  try{
+    const res=await fetch('https://YOUR_VERCEL_URL.vercel.app/api/proxy');
+    const data=await res.json();
+    const el=document.getElementById('value');
+    const val=parseFloat(data.value);
+    el.textContent=data.value+'%';
+    el.className=val>0?'positive':val<0?'negative':'zero';
+    document.getElementById('status').textContent=`Updated: ${new Date(data.timestamp).toLocaleString()}`;
+  }catch(e){
+    document.getElementById('status').textContent='Error loading';
+  }
+}
+update();setInterval(update,300000);
+</script>
+</body>
+</html>
