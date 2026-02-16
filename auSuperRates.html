@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>AusSuper Auto-Tracker (Multi-Proxy)</title>
+<title>AusSuper Auto-Tracker (Timeout-Proof)</title>
 <style>
   body { 
     font-family: Arial, sans-serif; 
@@ -31,69 +31,83 @@
     margin: 10px; 
   }
   button:hover { background: #106ebe; }
+  button:disabled { background: #ccc; cursor: not-allowed; }
   .status { 
     font-size: 1.1em; 
     color: #666; 
     margin: 10px 0; 
   }
-  .proxy-info { 
-    font-size: 0.9em; 
-    color: #888; 
-    margin-top: 15px; 
-  }
+  .progress { font-size: 0.9em; color: #888; }
 </style>
 </head>
 <body>
 
 <h1>🤑 AusSuper International Shares</h1>
-<div class="status" id="status">Trying proxies...</div>
+<div class="status" id="status">⏳ Initializing (can take 20+ seconds)...</div>
 <div id="output">-</div>
-<div class="proxy-info" id="proxyUsed"></div>
-<button id="refreshBtn">🔄 Refresh</button>
+<div class="progress" id="progress"></div>
+<button id="refreshBtn" disabled>🔄 Refresh (20s)</button>
 
 <script>
 const TARGET_URL = 'https://www.australiansuper.com//api/graphs/dailyrates/download/?start=01/02/2026&end=08/02/2026&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=temp.csv';
 
 const PROXIES = [
-  'https://api.allorigins.win/raw?url=',
-  'https://corsproxy.io/?',
-  'https://thingproxy.freeboard.io/fetch/',
-  'https://cors-anywhere.herokuapp.com/',
-  'https://api.codetabs.com/v1/proxy?quest='
+  { url: 'https://api.allorigins.win/raw?url=', name: 'AllOrigins' },
+  { url: 'https://corsproxy.io/?', name: 'CorsProxy' },
+  { url: 'https://thingproxy.freeboard.io/fetch/', name: 'ThingProxy' },
+  { url: 'https://api.codetabs.com/v1/proxy?quest=', name: 'CodeTabs' }
 ];
 
-async function tryProxy(proxyUrl, url) {
+function timeoutPromise(ms, promise, proxyName) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`${proxyName} timed out after ${ms/1000}s`));
+    }, ms);
+    
+    promise.finally(() => clearTimeout(timeout));
+    promise.then(resolve).catch(reject);
+  });
+}
+
+async function tryProxy(proxy, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
   try {
-    const response = await fetch(proxyUrl + encodeURIComponent(url));
+    const response = await fetch(proxy.url + encodeURIComponent(TARGET_URL), {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    clearTimeout(timeoutId);
     return await response.text();
   } catch (e) {
-    throw new Error(`Proxy failed: ${e.message}`);
+    clearTimeout(timeoutId);
+    throw new Error(`${proxy.name}: ${e.message}`);
   }
 }
 
 function parseCsv(csvText) {
   const rows = csvText.replace(/\r\n?/g, '\n').trim().split('\n');
-  if (rows.length < 2) throw new Error('No data rows');
+  if (rows.length < 2) throw new Error('No data');
   
   const headers = rows[0].split(',').map(h => h.trim());
   const intlIndex = headers.indexOf('International Shares');
-  if (intlIndex === -1) throw new Error('Column not found');
+  if (intlIndex === -1) throw new Error('Column missing');
   
-  // Find last row with real data (not all zeros)
-  for (let i = rows.length - 1; i > 1; i--) {
+  for (let i = rows.length - 1; i > 0; i--) {
     const cols = rows[i].split(',').map(c => c.trim());
     if (cols.length <= intlIndex) continue;
     
     const intlValue = parseFloat(cols[intlIndex]);
-    const hasRealData = cols.slice(1).some(c => {
+    const hasData = cols.slice(1).some(c => {
       const num = parseFloat(c);
       return !isNaN(num) && Math.abs(num) > 0.0001;
     });
     
-    if (hasRealData) {
-      return intlValue;
-    }
+    if (hasData) return intlValue;
   }
   return 0;
 }
@@ -101,45 +115,50 @@ function parseCsv(csvText) {
 async function fetchData() {
   const status = document.getElementById('status');
   const output = document.getElementById('output');
-  const proxyUsed = document.getElementById('proxyUsed');
+  const progress = document.getElementById('progress');
+  const refreshBtn = document.getElementById('refreshBtn');
   
-  status.textContent = 'Trying proxies...';
+  refreshBtn.disabled = true;
+  status.textContent = '⏳ Fetching data (wait 20-30s)...';
   output.textContent = '⏳';
   
   for (let i = 0; i < PROXIES.length; i++) {
+    const proxy = PROXIES[i];
+    progress.textContent = `Proxy ${i+1}/${PROXIES.length}: ${proxy.name}`;
+    
     try {
-      status.textContent = `Trying proxy ${i + 1}/${PROXIES.length}...`;
-      const csvText = await tryProxy(PROXIES[i], TARGET_URL);
+      const csvText = await timeoutPromise(35000, tryProxy(proxy), proxy.name);
       const intlValue = parseCsv(csvText);
       
       // SUCCESS!
-      proxyUsed.textContent = `✅ Using proxy: ${PROXIES[i].substring(0, 30)}...`;
+      status.textContent = `✅ Success via ${proxy.name}`;
       
       if (Math.abs(intlValue) < 0.0001) {
         output.textContent = 'Currently no change.';
         output.style.color = '#666';
-        status.textContent = '✅ Latest data: no movement';
       } else {
         const pct = intlValue.toFixed(2);
         output.textContent = `${pct}%`;
         output.style.color = intlValue >= 0 ? '#00aa00' : '#cc0000';
-        status.textContent = intlValue >= 0 ? '✅ Up!' : '✅ Down!';
       }
+      
+      refreshBtn.disabled = false;
       return;
       
     } catch (error) {
-      console.log(`Proxy ${i + 1} failed:`, error.message);
+      console.log(`${proxy.name} failed:`, error.message);
+      status.textContent = `${proxy.name} failed - trying next...`;
     }
   }
   
-  // All proxies failed
-  status.textContent = '❌ All proxies failed';
-  output.textContent = 'Failed';
+  status.textContent = '❌ All proxies timed out (AustralianSuper API too slow)';
+  output.textContent = 'Too Slow';
   output.style.color = '#cc0000';
-  proxyUsed.textContent = 'Try manual CSV upload as backup';
+  refreshBtn.disabled = false;
 }
 
-fetchData(); // Auto-run on load
+// Auto-start + button
+fetchData();
 document.getElementById('refreshBtn').addEventListener('click', fetchData);
 </script>
 
