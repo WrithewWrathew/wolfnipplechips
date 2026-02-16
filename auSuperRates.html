@@ -2,77 +2,145 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>AusSuper Auto-Tracker (CORS Proxy)</title>
+<title>AusSuper Auto-Tracker (Multi-Proxy)</title>
 <style>
-  body { font-family: Arial, sans-serif; padding: 40px; max-width: 600px; margin: auto; background: #f5f5f5; text-align: center; }
-  #output { font-size: 3em; margin: 30px 0; padding: 30px; background: white; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
-  button { padding: 15px 30px; font-size: 1.2em; background: #0078d4; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 10px; }
+  body { 
+    font-family: Arial, sans-serif; 
+    padding: 40px; 
+    max-width: 600px; 
+    margin: auto; 
+    background: #f5f5f5; 
+    text-align: center; 
+  }
+  #output { 
+    font-size: 3em; 
+    margin: 30px 0; 
+    padding: 30px; 
+    background: white; 
+    border-radius: 15px; 
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
+  }
+  button { 
+    padding: 15px 30px; 
+    font-size: 1.2em; 
+    background: #0078d4; 
+    color: white; 
+    border: none; 
+    border-radius: 8px; 
+    cursor: pointer; 
+    margin: 10px; 
+  }
   button:hover { background: #106ebe; }
-  .status { font-size: 1.1em; color: #666; margin: 10px 0; }
+  .status { 
+    font-size: 1.1em; 
+    color: #666; 
+    margin: 10px 0; 
+  }
+  .proxy-info { 
+    font-size: 0.9em; 
+    color: #888; 
+    margin-top: 15px; 
+  }
 </style>
 </head>
 <body>
 
 <h1>🤑 AusSuper International Shares</h1>
-<div class="status" id="status">Loading...</div>
+<div class="status" id="status">Trying proxies...</div>
 <div id="output">-</div>
+<div class="proxy-info" id="proxyUsed"></div>
 <button id="refreshBtn">🔄 Refresh</button>
 
 <script>
-const PROXY_URL = 'https://api.allorigins.win/raw?url=';
-const API_URL = encodeURIComponent('https://www.australiansuper.com//api/graphs/dailyrates/download/?start=01/02/2026&end=08/02/2026&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=temp.csv');
+const TARGET_URL = 'https://www.australiansuper.com//api/graphs/dailyrates/download/?start=01/02/2026&end=08/02/2026&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=temp.csv';
 
-async function fetchData() {
-  const status = document.getElementById("status");
-  status.textContent = "Fetching via proxy...";
-  
+const PROXIES = [
+  'https://api.allorigins.win/raw?url=',
+  'https://corsproxy.io/?',
+  'https://thingproxy.freeboard.io/fetch/',
+  'https://cors-anywhere.herokuapp.com/',
+  'https://api.codetabs.com/v1/proxy?quest='
+];
+
+async function tryProxy(proxyUrl, url) {
   try {
-    const response = await fetch(PROXY_URL + API_URL);
-    const csvText = await response.text();
-    
-    const rows = csvText.replace(/\r\n?/g, '\n').trim().split('\n');
-    const headers = rows[0].split(',').map(h => h.trim());
-    const intlIndex = headers.indexOf("International Shares");
-    
-    if (intlIndex === -1) throw new Error("Column not found");
-    
-    // Find last row with real data
-    let intlValue = null;
-    for (let i = rows.length - 1; i > 0; i--) {
-      const cols = rows[i].split(',').map(c => c.trim());
-      if (cols.length > intlIndex) {
-        const value = parseFloat(cols[intlIndex]);
-        const hasData = cols.slice(1).some(c => {
-          const num = parseFloat(c);
-          return !isNaN(num) && num !== 0;
-        });
-        if (hasData) {
-          intlValue = value;
-          break;
-        }
-      }
-    }
-    
-    const output = document.getElementById("output");
-    if (intlValue === null || intlValue === 0) {
-      output.textContent = "Currently no change.";
-      output.style.color = '#666';
-    } else {
-      output.textContent = intlValue.toFixed(2) + '%';
-      output.style.color = intlValue >= 0 ? '#00aa00' : '#cc0000';
-    }
-    
-    status.textContent = "✅ Updated";
-    
-  } catch (error) {
-    document.getElementById("status").textContent = "❌ Proxy failed - " + error.message;
-    document.getElementById("output").textContent = "Error";
+    const response = await fetch(proxyUrl + encodeURIComponent(url));
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.text();
+  } catch (e) {
+    throw new Error(`Proxy failed: ${e.message}`);
   }
 }
 
-// Auto-run + refresh button
-fetchData();
-document.getElementById("refreshBtn").addEventListener("click", fetchData);
+function parseCsv(csvText) {
+  const rows = csvText.replace(/\r\n?/g, '\n').trim().split('\n');
+  if (rows.length < 2) throw new Error('No data rows');
+  
+  const headers = rows[0].split(',').map(h => h.trim());
+  const intlIndex = headers.indexOf('International Shares');
+  if (intlIndex === -1) throw new Error('Column not found');
+  
+  // Find last row with real data (not all zeros)
+  for (let i = rows.length - 1; i > 1; i--) {
+    const cols = rows[i].split(',').map(c => c.trim());
+    if (cols.length <= intlIndex) continue;
+    
+    const intlValue = parseFloat(cols[intlIndex]);
+    const hasRealData = cols.slice(1).some(c => {
+      const num = parseFloat(c);
+      return !isNaN(num) && Math.abs(num) > 0.0001;
+    });
+    
+    if (hasRealData) {
+      return intlValue;
+    }
+  }
+  return 0;
+}
+
+async function fetchData() {
+  const status = document.getElementById('status');
+  const output = document.getElementById('output');
+  const proxyUsed = document.getElementById('proxyUsed');
+  
+  status.textContent = 'Trying proxies...';
+  output.textContent = '⏳';
+  
+  for (let i = 0; i < PROXIES.length; i++) {
+    try {
+      status.textContent = `Trying proxy ${i + 1}/${PROXIES.length}...`;
+      const csvText = await tryProxy(PROXIES[i], TARGET_URL);
+      const intlValue = parseCsv(csvText);
+      
+      // SUCCESS!
+      proxyUsed.textContent = `✅ Using proxy: ${PROXIES[i].substring(0, 30)}...`;
+      
+      if (Math.abs(intlValue) < 0.0001) {
+        output.textContent = 'Currently no change.';
+        output.style.color = '#666';
+        status.textContent = '✅ Latest data: no movement';
+      } else {
+        const pct = intlValue.toFixed(2);
+        output.textContent = `${pct}%`;
+        output.style.color = intlValue >= 0 ? '#00aa00' : '#cc0000';
+        status.textContent = intlValue >= 0 ? '✅ Up!' : '✅ Down!';
+      }
+      return;
+      
+    } catch (error) {
+      console.log(`Proxy ${i + 1} failed:`, error.message);
+    }
+  }
+  
+  // All proxies failed
+  status.textContent = '❌ All proxies failed';
+  output.textContent = 'Failed';
+  output.style.color = '#cc0000';
+  proxyUsed.textContent = 'Try manual CSV upload as backup';
+}
+
+fetchData(); // Auto-run on load
+document.getElementById('refreshBtn').addEventListener('click', fetchData);
 </script>
 
 </body>
