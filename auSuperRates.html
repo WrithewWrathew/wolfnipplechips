@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>AusSuper International Shares (6 Proxies)</title>
+<title>AusSuper International Shares (Flexible Search)</title>
 <style>
   body { 
     font-family: Arial, sans-serif; 
     padding: 40px; 
-    max-width: 600px; 
+    max-width: 700px; 
     margin: auto; 
     background: #f5f5f5; 
     text-align: center; 
@@ -32,112 +32,157 @@
     margin: 10px; 
   }
   button:hover { background: #106ebe; }
-  .status { 
-    font-size: 1.2em; 
-    color: #666; 
-    margin: 15px 0; 
-  }
+  .status { font-size: 1.2em; color: #666; margin: 15px 0; }
   #debug { 
-    font-size: 0.9em; 
-    color: #888; 
-    background: #f0f0f0; 
+    font-size: 0.85em; 
+    color: #333; 
+    background: #f8f8f8; 
     padding: 15px; 
     border-radius: 8px; 
     margin: 10px 0;
-    max-height: 120px;
+    max-height: 200px;
     overflow-y: auto;
     font-family: monospace;
+    text-align: left;
   }
 </style>
 </head>
 <body>
 
 <h1>🤑 AusSuper International Shares</h1>
-<div class="status" id="status">Trying 6 proxies...</div>
+<div class="status" id="status">Using working proxy...</div>
 <div id="output">⏳</div>
 <div id="debug"></div>
-<button id="refreshBtn">🔄 Try Again</button>
+<button id="refreshBtn">🔄 Refresh</button>
 
 <script>
 const TARGET_URL = 'https://www.australiansuper.com/why-choose-us/our-performance?superType=Super&display=table';
 
-const PROXIES = [
-  'https://api.allorigins.win/raw?url=',
-  'https://corsproxy.io/?',
-  'https://thingproxy.freeboard.io/fetch/',
-  'https://api.codetabs.com/v1/proxy?quest=',
-  'https://corsproxy.org/?',
-  'https://proxy.cors.sh/'
-];
+// Proxy 4 worked - using it exclusively
+const WORKING_PROXY = 'https://api.codetabs.com/v1/proxy?quest=';
 
 async function scrapeData() {
   const status = document.getElementById('status');
   const output = document.getElementById('output');
   const debug = document.getElementById('debug');
   
-  status.textContent = '⏳ Trying proxies...';
+  status.textContent = '⏳ Fetching with working proxy...';
   output.textContent = '⏳';
   debug.innerHTML = '';
   
-  for (let i = 0; i < PROXIES.length; i++) {
-    const proxy = PROXIES[i];
-    debug.innerHTML += `<strong>Proxy ${i+1}: ${proxy.substring(0, 30)}...</strong><br>`;
+  try {
+    const response = await fetch(WORKING_PROXY + encodeURIComponent(TARGET_URL));
+    const html = await response.text();
+    debug.innerHTML += `<strong>✅ Proxy fetched ${html.length} chars</strong><br>`;
     
-    try {
-      const response = await fetch(proxy + encodeURIComponent(TARGET_URL));
-      const html = await response.text();
-      debug.innerHTML += `✅ SUCCESS!<br>`;
-      
-      // SEARCH for International Shares marker
-      const marker = 'diy-mixed-investment-choice">International Shares</a></th>';
-      const markerIndex = html.indexOf(marker);
-      
-      if (markerIndex === -1) {
-        debug.innerHTML += `❌ Marker not found<br>`;
-        continue;
+    // FLEXIBLE SEARCH - multiple possible markers
+    const markers = [
+      'diy-mixed-investment-choice">International Shares',
+      'International Shares</a></th>',
+      '"International Shares"',
+      'International Shares',
+      /International\s+Shares/i  // regex fallback
+    ];
+    
+    let rowStart = -1, rowEnd = -1;
+    let foundMarker = '';
+    
+    for (const marker of markers) {
+      let index;
+      if (typeof marker === 'string') {
+        index = html.indexOf(marker);
+      } else {
+        const match = html.match(marker);
+        index = match ? match.index : -1;
       }
       
-      // Extract row
-      const trStart = html.lastIndexOf('<tr', markerIndex);
-      const trEnd = html.indexOf('</tr>', markerIndex);
-      const rowHtml = html.substring(trStart, trEnd + 5);
+      if (index !== -1) {
+        foundMarker = marker;
+        rowStart = html.lastIndexOf('<tr', index);
+        rowEnd = html.indexOf('</tr>', index);
+        debug.innerHTML += `<strong>✅ Found "${foundMarker}" at ${index}</strong><br>`;
+        break;
+      }
+    }
+    
+    if (rowStart === -1 || rowEnd === -1) {
+      debug.innerHTML += `<strong>❌ No TR found, searching ALL % values...</strong><br>`;
       
-      // Extract percentages
-      const percents = rowHtml.match(/-?\d+\.?\d*%+/g) || [];
-      debug.innerHTML += `Found ${percents.length} percents: ${percents.join(', ')}<br>`;
+      // FALLBACK: Find ANY row with percentages and "International"
+      const percentMatches = html.match(/-?\d+\.?\d*%+/g) || [];
+      const intlContext = html.match(/International[^<]*Shares[^<]*<\/th>/i);
       
-      // LAST non-zero
-      let lastNonZero = null;
-      for (let j = percents.length - 1; j >= 0; j--) {
-        const val = parseFloat(percents[j].replace('%', ''));
-        if (!isNaN(val) && Math.abs(val) > 0.0001) {
-          lastNonZero = val;
-          break;
+      debug.innerHTML += `Total % values on page: ${percentMatches.length}<br>`;
+      debug.innerHTML += `International context: ${intlContext ? intlContext[0].substring(0, 100) : 'none'}<br>`;
+      
+      // Look for cluster of 7+ percentages (table row pattern)
+      const percentClusters = [];
+      let currentCluster = [];
+      
+      for (let i = 0; i < percentMatches.length; i++) {
+        currentCluster.push(percentMatches[i]);
+        if (currentCluster.length >= 6 || i === percentMatches.length - 1) {
+          percentClusters.push([...currentCluster]);
+          currentCluster = [];
         }
       }
       
-      if (lastNonZero === null) {
-        output.textContent = 'Currently no change.';
-        output.style.color = '#666';
-      } else {
-        output.textContent = lastNonZero.toFixed(4) + '%';
-        output.style.color = lastNonZero >= 0 ? '#00aa44' : '#cc0000';
+      if (percentClusters.length > 0) {
+        // Use the largest cluster (likely our table row)
+        const targetCluster = percentClusters.sort((a,b) => b.length - a.length)[0];
+        debug.innerHTML += `<strong>Using cluster (${targetCluster.length} values):</strong><br>${targetCluster.join(', ')}<br>`;
+        
+        // Last non-zero
+        for (let i = targetCluster.length - 1; i >= 0; i--) {
+          const val = parseFloat(targetCluster[i].replace('%', ''));
+          if (!isNaN(val) && Math.abs(val) > 0.0001) {
+            const displayPct = val.toFixed(4);
+            output.textContent = `${displayPct}%`;
+            output.style.color = val >= 0 ? '#00aa44' : '#cc0000';
+            status.textContent = `✅ Found ${displayPct}%`;
+            debug.innerHTML += `<strong>✅ LAST NON-ZERO: ${displayPct}%</strong>`;
+            return;
+          }
+        }
       }
       
-      status.textContent = `✅ Proxy ${i+1} worked!`;
-      return;
-      
-    } catch (error) {
-      debug.innerHTML += `❌ ${error.message}<br><br>`;
+      throw new Error('No valid data cluster found');
     }
+    
+    // Extract row and percentages
+    const rowHtml = html.substring(rowStart, rowEnd + 5);
+    const percents = rowHtml.match(/-?\d+\.?\d*%+/g) || [];
+    debug.innerHTML += `<strong>Row percents (${percents.length}):</strong><br>${percents.join(', ')}<br>`;
+    
+    // Last non-zero
+    let lastNonZero = null;
+    for (let i = percents.length - 1; i >= 0; i--) {
+      const val = parseFloat(percents[i].replace('%', ''));
+      if (!isNaN(val) && Math.abs(val) > 0.0001) {
+        lastNonZero = val;
+        break;
+      }
+    }
+    
+    if (lastNonZero === null) {
+      output.textContent = 'Currently no change.';
+      output.style.color = '#666';
+    } else {
+      output.textContent = lastNonZero.toFixed(4) + '%';
+      output.style.color = lastNonZero >= 0 ? '#00aa44' : '#cc0000';
+    }
+    
+    status.textContent = '✅ Live data loaded!';
+    
+  } catch (error) {
+    status.textContent = `❌ ${error.message}`;
+    output.textContent = 'Failed';
+    output.style.color = '#cc0000';
+    debug.innerHTML += `<strong>ERROR: ${error.message}</strong>`;
   }
-  
-  status.textContent = '❌ All 6 proxies failed';
-  output.textContent = 'Failed';
-  output.style.color = '#cc0000';
 }
 
-// Auto-run + button
+// Auto-run
 scrapeData();
 document.getElementById('refreshBtn').addEventListener('click', scrapeData);
 </script>
