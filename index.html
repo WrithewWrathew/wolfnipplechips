@@ -5,8 +5,8 @@
 <title>AustralianSuper CSV Viewer</title>
 <style>
   body { font-family: Arial; margin: 20px; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #ccc; padding: 4px; text-align: center; }
+  table { border-collapse: collapse; width: 100%; max-width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 4px; text-align: center; font-size: 14px; }
   th { background: #f4f4f4; }
   #loading { font-weight: bold; margin-bottom: 10px; }
   button { margin-bottom: 10px; padding: 6px 12px; }
@@ -16,55 +16,61 @@
 
 <h2>AustralianSuper Daily Rates CSV</h2>
 <div id="loading"></div>
-<button onclick="loadCSV()">Refresh</button>
+<button onclick="loadData()">Refresh</button>
 <div id="tableContainer"></div>
 
 <script>
-async function loadCSV() {
+async function loadData() {
   const loading = document.getElementById("loading");
   const container = document.getElementById("tableContainer");
   container.innerHTML = "";
-  loading.innerText = "Fetching CSV... please wait 3-5 seconds";
+  loading.innerText = "Loading data...";
 
   try {
-    const res = await fetch("/api/fetchCsv");
-    if (!res.ok) throw new Error("Failed to fetch CSV: " + res.status);
+    const res = await fetch("auSuper.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
 
-    const text = await res.text();
+    const data = await res.json();
 
-    loading.innerText = "";
-
-    // Convert CSV to array
-    const rows = text.split("\n").map(r => r.trim()).filter(r => r);
-    if (rows.length === 0) {
-      container.innerText = "No data found";
+    if (!Array.isArray(data) || data.length === 0) {
+      container.innerText = "No data available";
+      loading.innerText = "";
       return;
     }
 
-    // Build HTML table
     const table = document.createElement("table");
 
-    rows.forEach((row, i) => {
+    // Create header row
+    const headerRow = document.createElement("tr");
+    Object.keys(data[0]).forEach(h => {
+      const th = document.createElement("th");
+      th.innerText = h;
+      headerRow.appendChild(th);
+    });
+    table.appendChild(headerRow);
+
+    // Create data rows
+    data.forEach(row => {
       const tr = document.createElement("tr");
-      const cols = row.split(",").map(c => c.trim());
-      cols.forEach(col => {
-        const cell = i === 0 ? document.createElement("th") : document.createElement("td");
-        cell.innerText = col;
-        tr.appendChild(cell);
+      Object.values(row).forEach(val => {
+        const td = document.createElement("td");
+        td.innerText = val;
+        tr.appendChild(td);
       });
       table.appendChild(tr);
     });
 
     container.appendChild(table);
+    loading.innerText = "";
 
   } catch (err) {
-    loading.innerText = "Error fetching CSV: " + err.message;
+    loading.innerText = "Error loading CSV: " + err.message;
     console.error(err);
   }
 }
 
 // Initial load
-loadCSV();
+loadData();
 </script>
 
 </body>
