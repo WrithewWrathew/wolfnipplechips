@@ -1,29 +1,89 @@
 <!DOCTYPE html>
 <html>
-<head><title>🤑 AusSuper LIVE</title>
-<style>body{font-family:Arial;text-align:center;padding:50px;background:#f0f8ff;}
-#value{font-size:4em;font-weight:bold;padding:30px;background:white;border-radius:20px;display:inline-block;box-shadow:0 10px 30px rgba(0,0,0,0.2);}
-.positive{color:#00aa44;}.negative{color:#cc0000;}.zero{color:#666;}</style>
+<head>
+  <meta charset="UTF-8">
+  <title>Aus Super Tracker</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 60px;
+    }
+
+    #value {
+      font-size: 48px;
+      font-weight: bold;
+    }
+
+    #date {
+      color: gray;
+      margin-top: 10px;
+    }
+
+    #status {
+      margin-top: 20px;
+    }
+  </style>
 </head>
+
 <body>
-<h1>🤑 AusSuper International Shares</h1>
-<div id="value">-</div>
-<div id="status">Loading...</div>
+
+<h2>International Shares Daily Return</h2>
+
+<div id="value">Loading...</div>
+<div id="date"></div>
+<div id="status"></div>
+
 <script>
-async function update(){ 
-  try{
-    const res=await fetch('https://YOUR_VERCEL_URL.vercel.app/api/proxy');
-    const data=await res.json();
-    const el=document.getElementById('value');
-    const val=parseFloat(data.value);
-    el.textContent=data.value+'%';
-    el.className=val>0?'positive':val<0?'negative':'zero';
-    document.getElementById('status').textContent=`Updated: ${new Date(data.timestamp).toLocaleString()}`;
-  }catch(e){
-    document.getElementById('status').textContent='Error loading';
+
+const API_URL =
+  "https://aus-super-tracker-abc123.vercel.app/api/intl";
+
+async function loadData() {
+
+  try {
+
+    const res = await fetch(API_URL);
+
+    if (!res.ok) {
+      throw new Error("API request failed");
+    }
+
+    const data = await res.json();
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    if (!data.value) {
+      document.getElementById("value").innerText =
+        "No recent data";
+      return;
+    }
+
+    document.getElementById("value").innerText =
+      data.value + "%";
+
+    document.getElementById("date").innerText =
+      "Date: " + data.date;
+
+    document.getElementById("status").innerText =
+      "Updated: " + new Date(data.fetchedAt).toLocaleString();
+
+  } catch (err) {
+
+    document.getElementById("value").innerText =
+      "Error";
+
+    document.getElementById("status").innerText =
+      err.message;
   }
 }
-update();setInterval(update,300000);
+
+loadData();
+
 </script>
+
 </body>
 </html>
