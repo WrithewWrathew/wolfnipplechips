@@ -2,128 +2,109 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>AusSuper International Shares - FIXED</title>
+<title>AusSuper Auto-Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
-  body { font-family: Arial, sans-serif; padding: 40px; max-width: 600px; margin: auto; background: #f5f5f5; }
-  #output { font-size: 2.5em; margin: 30px 0; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-  button { padding: 12px 24px; font-size: 1.1em; background: #0078d4; color: white; border: none; border-radius: 6px; cursor: pointer; margin: 10px; }
+  body { font-family: Arial, sans-serif; padding: 40px; max-width: 600px; margin: auto; background: #f5f5f5; text-align: center; }
+  #output { font-size: 3em; margin: 30px 0; padding: 30px; background: white; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+  button { padding: 15px 30px; font-size: 1.2em; background: #0078d4; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 10px; }
   button:hover { background: #106ebe; }
-  button:disabled { background: #ccc; cursor: not-allowed; }
-  input[type="file"] { margin: 20px 0; }
-  .instructions { background: #e7f3ff; padding: 15px; border-radius: 6px; margin: 20px 0; }
-  #debug { font-size: 0.8em; color: #666; margin-top: 10px; }
+  .status { font-size: 1.1em; color: #666; margin: 10px 0; }
+  .last-updated { font-size: 0.9em; color: #888; margin-top: 10px; }
 </style>
 </head>
 <body>
 
-<h1>🤑 AusSuper International Shares Tracker</h1>
-
-<div class="instructions">
-  <strong>Step 1:</strong> Download <a href="https://www.australiansuper.com//api/graphs/dailyrates/download/?start=01/02/2026&end=08/02/2026&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=temp.csv" target="_blank">temp.csv</a><br>
-  <strong>Step 2:</strong> Click "Choose File" → Should work instantly!
-</div>
-
-<input type="file" id="fileInput" accept=".csv">
-<div id="output">Choose temp.csv to see latest International Shares move</div>
-<div id="debug"></div>
-<button id="rescanBtn" disabled>🔄 Re-Scan Same File</button>
+<h1>🤑 AusSuper International Shares</h1>
+<div class="status" id="status">Loading latest data...</div>
+<div id="output">-</div>
+<div class="last-updated" id="timestamp"></div>
+<button id="refreshBtn">🔄 Refresh Now</button>
 
 <script>
-let lastFile = null;
+const API_URL = "https://www.australiansuper.com//api/graphs/dailyrates/download/?start=01/02/2026&end=08/02/2026&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=temp.csv";
 
-function processCsv(text) {
+function updateDisplay(intlSharesValue) {
   const output = document.getElementById("output");
-  const debug = document.getElementById("debug");
+  const status = document.getElementById("status");
+  const timestamp = document.getElementById("timestamp");
   
-  // Fix Windows line endings and trim
-  const cleanText = text.replace(/\r\n?/g, '\n').trim();
-  const rows = cleanText.split('\n');
+  timestamp.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
   
-  debug.textContent = `Found ${rows.length} rows`;
-  
-  if (rows.length < 2) {
-    output.textContent = "No data rows found.";
+  if (intlSharesValue === null || intlSharesValue === 0) {
+    output.textContent = "Currently no change.";
+    output.style.color = '#666';
+    status.textContent = "Latest data shows no movement";
     return;
   }
-
-  // Parse headers more robustly (handle extra spaces/quotes)
-  const headers = rows[0].split(',').map(h => h.trim().replace(/"/g, ''));
-  const intlIndex = headers.indexOf("International Shares");
   
-  debug.textContent = `Headers: ${headers.slice(0,3).join(', ')}... | International Shares at index ${intlIndex}`;
+  const pct = intlSharesValue.toFixed(2);
+  output.textContent = `${pct}%`;
+  output.style.color = intlSharesValue >= 0 ? '#00aa00' : '#cc0000';
+  status.textContent = intlSharesValue >= 0 ? "↑ International Shares up" : "↓ International Shares down";
+}
+
+function findLatestIntlShares(data) {
+  // Find "International Shares" column
+  const headers = data[0];
+  const intlIndex = headers.findIndex(h => h.trim() === "International Shares");
   
   if (intlIndex === -1) {
-    output.textContent = "'International Shares' column not found.";
-    debug.textContent += ` (checked: ${headers.join(', ')})`;
-    return;
+    console.error("International Shares column not found");
+    return null;
   }
-
-  // Find last row with actual data (not all zeros)
-  let lastRow = null;
-  for (let i = rows.length - 1; i > 0; i--) {
-    if (!rows[i].trim()) continue;
+  
+  // Find last row with non-zero data
+  for (let i = data.length - 1; i > 0; i--) {
+    const row = data[i];
+    if (!row || row.length <= intlIndex) continue;
     
-    // Split more robustly - handle values with commas or extra spaces
-    const cols = rows[i].split(',').map(c => c.trim());
-    
-    // Check if this row has non-zero data anywhere
-    const hasRealData = cols.slice(1).some(col => {
-      const num = parseFloat(col.replace(/"/g, ''));
+    const intlValue = parseFloat(row[intlIndex]);
+    const hasRealData = row.slice(1).some(val => {
+      const num = parseFloat(val);
       return !isNaN(num) && num !== 0;
     });
     
     if (hasRealData) {
-      lastRow = cols;
-      debug.textContent += ` | Using row ${i}: ${cols[intlIndex]}`;
-      break;
+      return intlValue;
     }
   }
-
-  if (!lastRow) {
-    output.textContent = "Currently no change.";
-    output.style.color = '#666';
-    return;
-  }
-
-  const intlValueStr = lastRow[intlIndex].replace(/"/g, '');
-  const intlValue = parseFloat(intlValueStr);
   
-  if (isNaN(intlValue) || intlValue === 0) {
-    output.textContent = "Currently no change.";
-    output.style.color = '#666';
-    return;
-  }
-
-  const pct = intlValue.toFixed(2);
-  output.textContent = `${pct}%`;
-  output.style.color = intlValue >= 0 ? '#00aa00' : '#cc0000';
-  debug.textContent += ` | International Shares: ${intlValueStr} → ${pct}%`;
+  return null;
 }
 
-document.getElementById("fileInput").addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    lastFile = file;
-    document.getElementById("rescanBtn").disabled = false;
-    document.getElementById("output").textContent = "Reading file...";
-    
-    const reader = new FileReader();
-    reader.onload = (e) => processCsv(e.target.result);
-    reader.onerror = () => {
-      document.getElementById("output").textContent = "Error reading file.";
-    };
-    reader.readAsText(file);
-  }
-});
+function fetchData() {
+  const status = document.getElementById("status");
+  status.textContent = "Fetching data...";
+  
+  Papa.parse(API_URL, {
+    download: true,
+    header: true,
+    skipEmptyLines: true,
+    complete: function(results) {
+      console.log("CSV parsed:", results);
+      
+      if (results.errors.length > 0) {
+        status.textContent = "Parse error - check console";
+        console.error("PapaParse errors:", results.errors);
+        return;
+      }
+      
+      const intlValue = findLatestIntlShares(results.data);
+      updateDisplay(intlValue);
+    },
+    error: function(err) {
+      console.error("Fetch failed:", err);
+      document.getElementById("status").textContent = "Failed to fetch data (CORS/proxy issue)";
+    }
+  });
+}
 
-document.getElementById("rescanBtn").addEventListener("click", () => {
-  if (lastFile) {
-    document.getElementById("output").textContent = "Re-scanning...";
-    const reader = new FileReader();
-    reader.onload = (e) => processCsv(e.target.result);
-    reader.readAsText(lastFile);
-  }
-});
+// Auto-run on page load
+fetchData();
+
+// Manual refresh button
+document.getElementById("refreshBtn").addEventListener("click", fetchData);
 </script>
 
 </body>
