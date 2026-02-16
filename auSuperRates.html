@@ -2,68 +2,82 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>AusSuper CSV Debug</title>
+<title>AusSuper CSV Debug - CodeTabs Only</title>
 <style>
-  body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: auto; background: #f5f5f5; }
+  body { font-family: Arial, sans-serif; padding: 40px; max-width: 900px; margin: auto; background: #f5f5f5; }
   #csvContent { 
-    background: #000; 
-    color: #0f0; 
-    font-family: monospace; 
-    padding: 20px; 
-    border-radius: 10px; 
+    background: #1a1a1a; 
+    color: #00ff00; 
+    font-family: 'Courier New', monospace; 
+    padding: 25px; 
+    border-radius: 12px; 
     margin: 20px 0; 
-    max-height: 400px; 
+    max-height: 500px; 
     overflow-y: auto; 
     white-space: pre-wrap;
     text-align: left;
+    font-size: 14px;
+    line-height: 1.4;
   }
-  button { padding: 15px 30px; font-size: 1.2em; background: #0078d4; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 10px; }
-  .status { font-size: 1.2em; color: #666; margin: 15px 0; }
+  button { padding: 15px 35px; font-size: 1.2em; background: #0078d4; color: white; border: none; border-radius: 10px; cursor: pointer; margin: 10px; }
+  button:hover { background: #106ebe; }
+  .status { font-size: 1.3em; color: #333; margin: 20px 0; font-weight: bold; }
+  .headers { background: #e8f4fd; padding: 15px; border-radius: 8px; margin: 10px 0; font-family: monospace; }
 </style>
 </head>
 <body>
 
-<h1>🤑 AusSuper CSV Debug - Full Content</h1>
-<div class="status" id="status">Fetching CSV...</div>
-<div id="csvContent">Loading...</div>
+<h1>🤑 AusSuper CSV Debug</h1>
+<div class="status" id="status">Fetching via CodeTabs proxy...</div>
+
+<div id="csvContent">⏳ Loading CSV...</div>
+
+<div class="headers" id="headers"></div>
+
 <button id="refreshBtn">🔄 Refresh CSV</button>
 
 <script>
 const CSV_URL = 'https://www.australiansuper.com//api/graphs/dailyrates/download/?start=01/02/2026&end=08/02/2026&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=temp.csv';
 
-const PROXIES = [
-  'https://corsproxy.io/?',
-  'https://api.codetabs.com/v1/proxy?quest='
-];
+const PROXY_URL = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(CSV_URL);
 
 async function fetchCsv() {
   const status = document.getElementById('status');
   const csvContent = document.getElementById('csvContent');
+  const headersDiv = document.getElementById('headers');
   
-  status.textContent = 'Trying Proxy 1/2...';
+  status.textContent = '⏳ Fetching (wait 10-20s)...';
+  csvContent.textContent = 'Loading...';
   
-  for (let i = 0; i < PROXIES.length; i++) {
-    try {
-      const proxyUrl = PROXIES[i] + encodeURIComponent(CSV_URL);
-      status.textContent = `Proxy ${i+1}: ${PROXIES[i].substring(0, 20)}...`;
-      
-      const response = await fetch(proxyUrl, { 
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-      });
-      
-      const csvText = await response.text();
-      csvContent.textContent = csvText;
-      
-      status.textContent = `✅ Proxy ${i+1} SUCCESS (${csvText.length} chars)`;
-      return;
-      
-    } catch (e) {
-      status.textContent = `❌ Proxy ${i+1} failed`;
+  try {
+    const response = await fetch(PROXY_URL, {
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+    
+    const csvText = await response.text();
+    csvContent.textContent = csvText;
+    
+    status.textContent = `✅ SUCCESS (${csvText.length} chars)`;
+    
+    // Show headers for debugging
+    const firstLine = csvText.split('\n')[0];
+    const headers = firstLine.split(',').map(h => h.trim().replace(/"/g, ''));
+    headersDiv.innerHTML = `<strong>HEADERS (${headers.length}):</strong> ${headers.join(' | ')}`;
+    
+    // Find International Shares index
+    const intlIndex = headers.indexOf('International Shares');
+    if (intlIndex !== -1) {
+      headersDiv.innerHTML += `<br><strong>✅ INTERNATIONAL SHARES at column ${intlIndex}</strong>`;
+    } else {
+      headersDiv.innerHTML += `<br><strong>❌ NO "International Shares" column</strong>`;
     }
+    
+  } catch (error) {
+    csvContent.textContent = `ERROR: ${error.message}`;
+    status.textContent = '❌ Proxy failed';
   }
-  
-  csvContent.textContent = 'ALL PROXIES FAILED';
-  status.textContent = '❌ No CSV data received';
 }
 
 fetchCsv();
