@@ -1,62 +1,42 @@
-name: Update Super Data
+name: Update AustralianSuper CSV
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "0 6 * * *"  # runs daily at 6:00 UTC
   workflow_dispatch:
 
 jobs:
-  update:
+  fetch_csv:
     runs-on: ubuntu-latest
-
     steps:
-
       - uses: actions/checkout@v4
 
       - name: Download CSV
         run: |
-          curl -L -o temp.csv "https://www.australiansuper.com/api/graphs/dailyrates/download/?start=01/01/2026&end=31/12/2026&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=temp.csv"
+          curl -L -o temp.csv "https://www.australiansuper.com//api/graphs/dailyrates/download/?start=12/02/2026&end=31/12/2076&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=auSuper.csv"
 
-      - name: Extract International Shares
+      - name: Convert CSV to JSON
         run: |
           node <<EOF
           const fs = require('fs');
 
-          const csv = fs.readFileSync('temp.csv','utf8');
+          const csv = fs.readFileSync('temp.csv', 'utf8');
+          const lines = csv.split('\n').map(l => l.trim()).filter(Boolean);
+          const headers = lines[0].split(',').map(h => h.trim());
+          const data = lines.slice(1).map(line => {
+            const cols = line.split(',').map(c => c.trim());
+            const obj = {};
+            headers.forEach((h,i) => obj[h] = cols[i] ?? '');
+            return obj;
+          });
 
-          const lines = csv.split('\n').map(l=>l.trim()).filter(Boolean);
-
-          const headers = lines[0].split(',');
-
-          const index = headers.findIndex(h =>
-            h.toLowerCase().includes('international shares')
-          );
-
-          let value = null;
-          let date = null;
-
-          for(let i=lines.length-1;i>0;i--){
-            const cols = lines[i].split(',');
-            const v = parseFloat(cols[index]);
-
-            if(!isNaN(v) && Math.abs(v)>0.00001){
-              value = v;
-              date = cols[0];
-              break;
-            }
-          }
-
-          fs.writeFileSync('intl.json', JSON.stringify({
-            value,
-            date,
-            updated: new Date().toISOString()
-          }, null, 2));
+          fs.writeFileSync('auSuper.json', JSON.stringify(data, null, 2));
           EOF
 
-      - name: Commit result
+      - name: Commit JSON
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add intl.json
-          git commit -m "auto update data" || echo "No changes"
+          git add auSuper.json
+          git commit -m "Daily update CSV → JSON" || echo "No changes"
           git push
