@@ -1,0 +1,62 @@
+name: Update Super Data
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # runs daily (UTC)
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - name: Download CSV
+        run: |
+          curl -L -o temp.csv "https://www.australiansuper.com/api/graphs/dailyrates/download/?start=01/01/2026&end=31/12/2026&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=temp.csv"
+
+      - name: Extract International Shares
+        run: |
+          node <<EOF
+          const fs = require('fs');
+
+          const csv = fs.readFileSync('temp.csv','utf8');
+
+          const lines = csv.split('\n').map(l=>l.trim()).filter(Boolean);
+
+          const headers = lines[0].split(',');
+
+          const index = headers.findIndex(h =>
+            h.toLowerCase().includes('international shares')
+          );
+
+          let value = null;
+          let date = null;
+
+          for(let i=lines.length-1;i>0;i--){
+            const cols = lines[i].split(',');
+            const v = parseFloat(cols[index]);
+
+            if(!isNaN(v) && Math.abs(v)>0.00001){
+              value = v;
+              date = cols[0];
+              break;
+            }
+          }
+
+          fs.writeFileSync('intl.json', JSON.stringify({
+            value,
+            date,
+            updated: new Date().toISOString()
+          }, null, 2));
+          EOF
+
+      - name: Commit result
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add intl.json
+          git commit -m "auto update data" || echo "No changes"
+          git push
