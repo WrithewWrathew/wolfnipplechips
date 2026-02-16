@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AustralianSuper Rate Tracker</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    padding-top: 50px;
+    background-color: #f9f9f9;
+  }
+  #output {
+    font-size: 2em;
+    margin: 20px 0;
+    color: #222;
+  }
+  button {
+    font-size: 1.1em;
+    padding: 10px 20px;
+    border: none;
+    cursor: pointer;
+    background-color: #0078d7;
+    color: white;
+    border-radius: 5px;
+  }
+  button:hover {
+    background-color: #005fa3;
+  }
+</style>
+</head>
+<body>
+
+<h1>AustralianSuper International Shares Tracker</h1>
+<div id="output">Loading latest rate...</div>
+<button id="rescanBtn">Re-Scan</button>
+
+<script>
+async function fetchRate() {
+  const output = document.getElementById("output");
+
+  const url = "https://www.australiansuper.com//api/graphs/dailyrates/download/?start=01/02/2026&end=08/02/2026&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=temp.csv";
+
+  try {
+    const response = await fetch(url);
+    const text = await response.text();
+
+    const rows = text.trim().split("\n");
+    if (rows.length < 2) {
+      output.textContent = "No data available.";
+      return;
+    }
+
+    const headers = rows[0].split(",");
+    const intlIndex = headers.indexOf("International Shares");
+
+    if (intlIndex === -1) {
+      output.textContent = "Column 'International Shares' not found.";
+      return;
+    }
+
+    // Get the last non-empty line
+    let lastValidRow = null;
+    for (let i = rows.length - 1; i > 0; i--) {
+      const cols = rows[i].split(",");
+      if (cols.every(v => v.trim() === "")) continue;
+      lastValidRow = cols;
+      break;
+    }
+
+    if (!lastValidRow) {
+      output.textContent = "No valid data rows found.";
+      return;
+    }
+
+    const intlValue = parseFloat(lastValidRow[intlIndex]);
+    if (isNaN(intlValue) || intlValue === 0) {
+      output.textContent = "Currently no change.";
+      return;
+    }
+
+    const pctMove = intlValue.toFixed(2);
+    output.textContent = `${pctMove}%`;
+
+  } catch (err) {
+    output.textContent = "Error fetching data.";
+    console.error(err);
+  }
+}
+
+document.getElementById("rescanBtn").addEventListener("click", fetchRate);
+fetchRate();
+</script>
+
+</body>
+</html>
