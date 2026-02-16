@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>AusSuper Auto-Tracker (Timeout-Proof)</title>
+<title>AusSuper International Shares (Live Scrape)</title>
 <style>
   body { 
     font-family: Arial, sans-serif; 
@@ -13,153 +13,104 @@
     text-align: center; 
   }
   #output { 
-    font-size: 3em; 
+    font-size: 3.5em; 
     margin: 30px 0; 
-    padding: 30px; 
+    padding: 40px; 
     background: white; 
-    border-radius: 15px; 
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
+    border-radius: 20px; 
+    box-shadow: 0 6px 30px rgba(0,0,0,0.15); 
+    font-weight: bold;
   }
   button { 
-    padding: 15px 30px; 
-    font-size: 1.2em; 
+    padding: 15px 35px; 
+    font-size: 1.3em; 
     background: #0078d4; 
     color: white; 
     border: none; 
-    border-radius: 8px; 
+    border-radius: 10px; 
     cursor: pointer; 
     margin: 10px; 
   }
   button:hover { background: #106ebe; }
-  button:disabled { background: #ccc; cursor: not-allowed; }
   .status { 
-    font-size: 1.1em; 
+    font-size: 1.2em; 
     color: #666; 
-    margin: 10px 0; 
+    margin: 15px 0; 
   }
-  .progress { font-size: 0.9em; color: #888; }
 </style>
 </head>
 <body>
 
 <h1>🤑 AusSuper International Shares</h1>
-<div class="status" id="status">⏳ Initializing (can take 20+ seconds)...</div>
-<div id="output">-</div>
-<div class="progress" id="progress"></div>
-<button id="refreshBtn" disabled>🔄 Refresh (20s)</button>
+<div class="status" id="status">Loading live data...</div>
+<div id="output">⏳</div>
+<button id="refreshBtn">🔄 Refresh Live Data</button>
 
 <script>
-const TARGET_URL = 'https://www.australiansuper.com//api/graphs/dailyrates/download/?start=01/02/2026&end=08/02/2026&cumulative=False&superType=super&truncateDecimalPlaces=True&outputFilename=temp.csv';
+const TARGET_URL = 'https://www.australiansuper.com/why-choose-us/our-performance?superType=Super&display=table';
 
-const PROXIES = [
-  { url: 'https://api.allorigins.win/raw?url=', name: 'AllOrigins' },
-  { url: 'https://corsproxy.io/?', name: 'CorsProxy' },
-  { url: 'https://thingproxy.freeboard.io/fetch/', name: 'ThingProxy' },
-  { url: 'https://api.codetabs.com/v1/proxy?quest=', name: 'CodeTabs' }
-];
-
-function timeoutPromise(ms, promise, proxyName) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error(`${proxyName} timed out after ${ms/1000}s`));
-    }, ms);
-    
-    promise.finally(() => clearTimeout(timeout));
-    promise.then(resolve).catch(reject);
-  });
-}
-
-async function tryProxy(proxy, timeoutMs = 30000) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    const response = await fetch(proxy.url + encodeURIComponent(TARGET_URL), {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    });
-    
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    
-    clearTimeout(timeoutId);
-    return await response.text();
-  } catch (e) {
-    clearTimeout(timeoutId);
-    throw new Error(`${proxy.name}: ${e.message}`);
-  }
-}
-
-function parseCsv(csvText) {
-  const rows = csvText.replace(/\r\n?/g, '\n').trim().split('\n');
-  if (rows.length < 2) throw new Error('No data');
-  
-  const headers = rows[0].split(',').map(h => h.trim());
-  const intlIndex = headers.indexOf('International Shares');
-  if (intlIndex === -1) throw new Error('Column missing');
-  
-  for (let i = rows.length - 1; i > 0; i--) {
-    const cols = rows[i].split(',').map(c => c.trim());
-    if (cols.length <= intlIndex) continue;
-    
-    const intlValue = parseFloat(cols[intlIndex]);
-    const hasData = cols.slice(1).some(c => {
-      const num = parseFloat(c);
-      return !isNaN(num) && Math.abs(num) > 0.0001;
-    });
-    
-    if (hasData) return intlValue;
-  }
-  return 0;
-}
-
-async function fetchData() {
+async function scrapeData() {
   const status = document.getElementById('status');
   const output = document.getElementById('output');
-  const progress = document.getElementById('progress');
-  const refreshBtn = document.getElementById('refreshBtn');
   
-  refreshBtn.disabled = true;
-  status.textContent = '⏳ Fetching data (wait 20-30s)...';
+  status.textContent = '⏳ Fetching performance page...';
   output.textContent = '⏳';
   
-  for (let i = 0; i < PROXIES.length; i++) {
-    const proxy = PROXIES[i];
-    progress.textContent = `Proxy ${i+1}/${PROXIES.length}: ${proxy.name}`;
+  try {
+    // Use CORS proxy to fetch the HTML page
+    const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(TARGET_URL);
+    const response = await fetch(proxyUrl);
+    const html = await response.text();
     
-    try {
-      const csvText = await timeoutPromise(35000, tryProxy(proxy), proxy.name);
-      const intlValue = parseCsv(csvText);
-      
-      // SUCCESS!
-      status.textContent = `✅ Success via ${proxy.name}`;
-      
-      if (Math.abs(intlValue) < 0.0001) {
-        output.textContent = 'Currently no change.';
-        output.style.color = '#666';
-      } else {
-        const pct = intlValue.toFixed(2);
-        output.textContent = `${pct}%`;
-        output.style.color = intlValue >= 0 ? '#00aa00' : '#cc0000';
-      }
-      
-      refreshBtn.disabled = false;
-      return;
-      
-    } catch (error) {
-      console.log(`${proxy.name} failed:`, error.message);
-      status.textContent = `${proxy.name} failed - trying next...`;
+    // Parse HTML with DOMParser
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Find International Shares row
+    const intlRow = doc.querySelector('th a[href*="/investments/your-investment-options/diy-mixed-investment-choice"]')?.closest('tr');
+    
+    if (!intlRow) {
+      throw new Error('International Shares row not found');
     }
+    
+    // Get all <td> cells (percentage values)
+    const cells = Array.from(intlRow.querySelectorAll('td'));
+    
+    // Find LAST non-zero percentage (remove % and parse)
+    let lastNonZero = null;
+    for (let i = cells.length - 1; i >= 0; i--) {
+      const cellText = cells[i].textContent.trim();
+      const value = parseFloat(cellText.replace('%', ''));
+      
+      if (!isNaN(value) && Math.abs(value) > 0.0001) {
+        lastNonZero = value;
+        break;
+      }
+    }
+    
+    if (lastNonZero === null) {
+      output.textContent = 'Currently no change.';
+      output.style.color = '#666';
+      status.textContent = '✅ No recent movement';
+    } else {
+      const pct = lastNonZero.toFixed(4);
+      output.textContent = `${pct}%`;
+      output.style.color = lastNonZero >= 0 ? '#00aa44' : '#cc0000';
+      status.textContent = `✅ Latest: ${lastNonZero >= 0 ? '↑' : '↓'} ${Math.abs(lastNonZero).toFixed(4)}%`;
+    }
+    
+  } catch (error) {
+    status.textContent = `❌ Error: ${error.message}`;
+    output.textContent = 'Failed';
+    output.style.color = '#cc0000';
   }
-  
-  status.textContent = '❌ All proxies timed out (AustralianSuper API too slow)';
-  output.textContent = 'Too Slow';
-  output.style.color = '#cc0000';
-  refreshBtn.disabled = false;
 }
 
-// Auto-start + button
-fetchData();
-document.getElementById('refreshBtn').addEventListener('click', fetchData);
+// Auto-run on load
+scrapeData();
+
+// Refresh button
+document.getElementById('refreshBtn').addEventListener('click', scrapeData);
 </script>
 
 </body>
