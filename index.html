@@ -3,6 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <title>Aus Super Tracker</title>
+
+<style>
+
+body {
+  font-family: Arial;
+  text-align: center;
+  margin-top: 60px;
+}
+
+#value {
+  font-size: 48px;
+  font-weight: bold;
+}
+
+</style>
+
 </head>
 
 <body>
@@ -13,17 +29,25 @@
 
 <script>
 
-async function loadData(){
+fetch("intl.json")
+  .then(r => {
+    if(!r.ok) throw new Error("Cannot load data");
+    return r.json();
+  })
+  .then(data => {
 
-  const res = await fetch("intl.json");
+    document.getElementById("value").innerText =
+      data.value + "% (" + data.date + ")";
 
-  const data = await res.json();
+  })
+  .catch(err => {
 
-  document.getElementById("value").innerText =
-    data.value + "% (" + data.date + ")";
-}
+    document.getElementById("value").innerText =
+      "Unable to load data";
 
-loadData();
+    console.error(err);
+
+  });
 
 </script>
 
